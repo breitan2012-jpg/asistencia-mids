@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: mids-asistencia-api
+    runtime: node
+    plan: free
+    rootDir: functions
+    buildCommand: npm ci --omit=dev
+    startCommand: node render.mjs
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: GOOGLE_CLOUD_PROJECT
+        value: asistencia-656b3
+      - key: MIDS_ALLOWED_ORIGINS
+        value: https://asistencia-656b3.web.app,https://asistencia-656b3.firebaseapp.com
+      - key: MIDS_PEPPER_FILE
+        value: /etc/secrets/mids-pepper
+      - key: MIDS_FIREBASE_CREDENTIAL_FILE
+        value: /etc/secrets/firebase-service-account.json
