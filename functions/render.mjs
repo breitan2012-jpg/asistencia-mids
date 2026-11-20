@@ -1,0 +1,21 @@
+// Standalone API. This entry point never initializes or migrates production data.
+import { readFileSync } from 'node:fs';
+import { applicationDefault, cert, initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { FirestoreStore } from './store.mjs';
+import { createService } from './service.mjs';
+import { createHttpApp } from './http.mjs';
+if(process.env.FIRESTORE_EMULATOR_HOST)throw new Error('Production API cannot use an emulator.');
+const pepperFile=process.env.MIDS_PEPPER_FILE;
+if(!pepperFile) throw new Error('MIDS_PEPPER_FILE is required.');
+const pepper=readFileSync(pepperFile,'utf8').trim();
+const origins=(process.env.MIDS_ALLOWED_ORIGINS || '').split(',').map(x=>x.trim()).filter(Boolean);
+if(!origins.length || origins.some(x=>new URL(x).origin!==x || !x.startsWith('https://'))) throw new Error('Exact HTTPS origins are required.');
+const key=process.env.MIDS_FIREBASE_CREDENTIAL_FILE ? JSON.parse(readFileSync(process.env.MIDS_FIREBASE_CREDENTIAL_FILE,'utf8')) : null;
+if(key && key.project_id!=='asistencia-656b3')throw new Error('Incorrect Firebase project.');
+const credential=key ? cert(key) : applicationDefault();
+initializeApp({credential,projectId:process.env.GOOGLE_CLOUD_PROJECT || 'asistencia-656b3'});
+const app=createHttpApp(createService({store:new FirestoreStore(getFirestore()),pepper}),{origins,transport:'bearer',secureCookies:true,trustProxy:1,healthCheck:true});
+const port=Number(process.env.PORT || 10000);
+const server=app.listen(port,'0.0.0.0',()=>console.log('MIDS secure API listening'));
+process.on('SIGTERM',()=>server.close(()=>process.exit(0)));

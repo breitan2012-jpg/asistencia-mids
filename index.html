@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <meta name="theme-color" content="#0B0F0E" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="description" content="Control de Asistencia - Ministerio Internacional Dios Sobrenatural" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Asistencia MIDS" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192x192.png" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Control Asistencia · MIDS</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Orbitron:wght@600;700;900&display=swap" rel="stylesheet" />
+
+  <!-- Firebase (Solution 1 & 5 Support) -->
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  
+  <!-- Face API removed as requested -->
+  
+  <script type="module" src="/src/main.js"></script>
+  <link rel="stylesheet" href="/src/index.css" />
+  <link rel="stylesheet" href="/src/theme.css" />
+</head>
+<body>
+
+<!-- ═══════════ ANIMATED SPLASH SCREEN ═══════════ -->
+<div id="splash-screen" class="splash-screen">
+  <div class="splash-content">
+    <!-- Dove icon with glow -->
+    <div class="splash-dove">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z" opacity="0"/>
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" opacity="0"/>
+        <text x="12" y="16" text-anchor="middle" font-size="14" fill="#10B981" stroke="none">🕊️</text>
+      </svg>
+    </div>
+
+    <!-- Golden circle ring -->
+    <div class="splash-ring">
+      <div class="splash-ring-inner"></div>
+      <div class="splash-check">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Church name -->
+    <div class="splash-text">
+      <div class="splash-org">MINISTERIO INTERNACIONAL</div>
+      <div class="splash-name">DIOS SOBRENATURAL</div>
+      <div class="splash-sub">Control de Asistencia</div>
+    </div>
+
+    <!-- Loading dots -->
+    <div class="splash-dots">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <!-- ═══════════ BOTTOM NAVIGATION BAR ═══════════ -->
+  <nav class="bottom-nav" id="bottom-nav">
+    <button class="nav-item active" data-view="public" onclick="navigateTo('public')">
+      <span class="nav-icon">🏠</span>
+      <span class="nav-label">Inicio</span>
+    </button>
+    <button class="nav-item" onclick="abrirModalSoluciones()">
+      <span class="nav-icon">🛠️</span>
+      <span class="nav-label">Soluciones</span>
+    </button>
+    <button class="nav-item" onclick="showLogin()">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Admin</span>
+    </button>
+
+  </nav>
+
+  <header class="hdr" style="padding: 10px 15px;">
+    <div style="display: flex; gap: 8px; width: 100%; align-items: center;">
+      <div class="church-heading"><strong>MIDS</strong><span>Control de asistencia</span></div>
+      <!-- Cuadro PIN / ID a la par del nombre como antes -->
+      <div id="hdr-id-box" class="hdr-id-box">
+        <div id="hdr-id-logged" style="display:none; align-items:center; justify-content:space-between; gap:6px; width:100%;">
+          <span id="hdr-id-name" style="font-size:0.75rem; font-weight:700; color:var(--gold-light); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Admin</span>
+          <button type="button" onclick="logoutPublic()" class="hdr-logout-btn">Salir</button>
+        </div>
+        <form id="header-pin-form" class="header-pin-form" onsubmit="event.preventDefault(); validarPublicId('hdr');">
+          <input id="hdr-inp-id" type="password" placeholder="PIN / ID..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" maxlength="128" />
+          <button type="submit" class="btn-sm btn-pin-ok">OK</button>
+        </form>
+      </div>
+      <div class="logo" style="margin-left:4px; display:flex; align-items:center;"><img src="icons/icon-192x192.png" alt="MIDS" style="width:42px; height:42px; border-radius:50%;"/></div>
+    </div>
+    
+    <!-- Badge de sincronización pendiente (Oculto inicialmente) -->
+    <div id="offline-sync-badge" style="display:none; margin-top: 8px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 6px 10px; align-items: center; justify-content: center; gap: 8px; font-size: 0.75rem; color: #fca5a5; font-weight: 600;">
+      <span class="spin" style="width:12px; height:12px; border-width: 2px; border-top-color: #fca5a5;"></span>
+      <span id="offline-sync-text">Hay registros pendientes de subir</span>
+    </div>
+  </header>
+
+  <!-- PUBLIC VIEW -->
+  <div id="view-public" class="view active">
+    <!-- SECCIÓN DE LOGIN PÚBLICO: oculta por defecto, solo como fallback -->
+    <!-- ═══════════ WELCOME / CHURCH IDENTITY SECTION ═══════════ -->
+    <div id="public-id-section" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+      <div class="welcome-section">
+        <div style="font-size: 2.2rem; margin-bottom: 12px;">🕊️</div>
+        <div style="font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-muted); margin-bottom: 4px;">MINISTERIO INTERNACIONAL</div>
+        <h1 style="font-family: var(--fh); font-size: 1.4rem; color: var(--gold); margin-bottom: 4px;">DIOS SOBRENATURAL</h1>
+        <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 24px;">Control de Asistencia</p>
+        <div class="welcome-check">✓</div>
+        <div class="welcome-title">¡Bienvenido!</div>
+        <p class="welcome-sub">Selecciona tu ministerio para registrar tu asistencia</p>
+      </div>
+    </div>
+
+    <!-- ═══════════ MAIN ATTENDANCE LIST ═══════════ -->
+    <div id="public-list-section" style="display: block;">
+      <!-- Church Identity + Welcome Hero (matches reference design) -->
+      <div class="hero" style="padding: 20px 16px 6px; margin-bottom: 0;">
+        <div style="font-size: 1.6rem; margin-bottom: 10px;">🕊️</div>
+        <div style="font-size: 0.52rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: var(--text-muted); margin-bottom: 3px;">MINISTERIO INTERNACIONAL</div>
+        <h1 id="church-name-display" style="font-family: var(--fh); font-size: 1.2rem; color: var(--gold); margin-bottom: 2px; letter-spacing: 0.04em;">DIOS SOBRENATURAL</h1>
+        <p style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 20px;">Control de Asistencia</p>
+
+        <!-- Golden Check Circle (main visual element from reference) -->
+        <div class="golden-circle-wrapper">
+          <div class="golden-circle">
+            <div class="golden-circle-inner">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-family: var(--fh); font-size: 1.4rem; font-weight: 800; color: var(--text); margin-top: 18px; margin-bottom: 6px;">¡Bienvenido!</div>
+      </div>
+
+      <!-- Ministry Selection Prompt -->
+      <div id="ministry-select-prompt" style="text-align: center; padding: 4px 16px 10px;">
+        <p style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">O selecciona tu ministerio</p>
+      </div>
+
+      <div style="padding: 0; margin-bottom: 4px;">
+        <h2 id="public-ministry-title" style="margin: 0; color: var(--gold); font-size: 0.8rem; padding: 0 4px;"></h2>
+      </div>
+
+      <!-- CONTENEDOR DE BANNERS -->
+      <div id="banners-container" class="banner-container"></div>
+
+      <div class="loc-bar">
+        <div class="loc-dot chk" id="loc-dot"></div>
+        <span id="loc-text" style="flex:1">Verificando ubicación…</span>
+        <button id="btn-loc-retry" onclick="checkLocation()" style="display:none;background:var(--surf);border:1px solid var(--border);color:var(--gold);border-radius:8px;padding:6px 12px;font-size:.7rem">🔄 Reintentar</button>
+      </div>
+
+      <div id="admin-indicator" style="display:none; background:rgba(16,185,129,.1); border:1px solid var(--gold); border-radius:12px; padding:10px; margin-bottom:18px; text-align:center; color:var(--gold-lt); font-size:.8rem; font-weight:600;">
+        🔓 Modo Administrador: Registro Manual Activo
+      </div>
+
+      <div id="acc-wrap"></div>
+    </div>
+  </div>
+
+  <!-- OFFLINE VIEW -->
+  <div id="view-offline" class="view">
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; padding: 20px; text-align: center;">
+      <div style="font-size: 4rem; margin-bottom: 20px;">📡</div>
+      <h2 style="color: var(--gold); margin-bottom: 15px;">No es posible conectarse en este momento</h2>
+      <p style="color: var(--text-primary); font-size: 0.95rem; line-height: 1.6; margin-bottom: 15px; max-width: 420px;">
+        Hemos detectado que no tienes conexión a Internet o que la red Wi-Fi de la iglesia no está disponible.
+      </p>
+      <p style="color: var(--text-primary); font-size: 0.95rem; line-height: 1.6; margin-bottom: 10px; max-width: 420px;">
+        Por favor, acércate al hermano <strong style="color:var(--gold);">Breitan</strong> para solicitar las credenciales del Wi-Fi.
+      </p>
+      <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; margin-bottom: 25px; max-width: 420px;">
+        No te preocupes, el pastor ya está informado sobre este procedimiento.
+        Si el hermano <strong>Breitan</strong> aún no ha llegado, puedes guardar tu llegada para que posteriormente un administrador la verifique.
+      </p>
+
+      <div class="card" style="width: 100%; max-width: 420px; text-align: left; background: rgba(255,255,255,0.03);">
+        <div class="field">
+          <label>Ministerio</label>
+          <select id="sel-offline-min" style="width:100%; background:var(--surf); border:1px solid var(--border); border-radius:8px; padding:10px; font-size:0.9rem; color:var(--text-primary);">
+            <option value="">— Selecciona ministerio —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Tu nombre</label>
+          <select id="sel-offline-name" style="width:100%; background:var(--surf); border:1px solid var(--border); border-radius:8px; padding:10px; font-size:0.9rem; color:var(--text-primary);">
+            <option value="">— Selecciona tu nombre —</option>
+          </select>
+        </div>
+        <button onclick="saveOfflineArrival()" style="width:100%; background:var(--gold); color:#0B0F0E; border:none; border-radius:8px; padding:12px; font-size:1rem; font-weight:700; cursor:pointer; margin-top:10px;">
+          Guardar mi llegada
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN VIEW -->
+  <div id="view-admin" class="view"></div>
+</div>
+
+<!-- MODALS -->  <!-- ═══════════ HELP MODAL ═══════════ -->
+<div class="overlay" id="modal-help">
+  <div class="modal" style="max-width: 400px;">
+    <div style="text-align: center; margin-bottom: 16px;">
+      <div style="font-size: 2rem; margin-bottom: 8px;">❓</div>
+      <h2 style="margin: 0; font-size: 1.2rem;">Ayuda</h2>
+      <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 6px;">Información del sistema</p>
+    </div>
+    <div style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6;">
+      <p style="margin-bottom: 12px;"><strong style="color: var(--gold);">Control de Asistencia MIDS</strong></p>
+      <p style="margin-bottom: 12px;">Para registrar tu asistencia, selecciona tu ministerio y luego presiona el botón junto a tu nombre.</p>
+      <p style="margin-bottom: 12px;">Si tienes problemas con la ubicación, verifica que tu GPS esté activado y que hayas dado permiso al navegador.</p>
+      <p style="margin-bottom: 12px;">Para contactar al administrador, acércate al hermano designado en la iglesia.</p>
+      <p style="font-size: 0.72rem; color: var(--text-muted);">Versión 6.2.2 · Ministerio Internacional Dios Sobrenatural</p>
+    </div>
+    <button class="btn-confirm" onclick="closeModal('modal-help')" style="margin-top: 16px;">Entendido</button>
+  </div>
+</div>
+
+  <div class="overlay" id="modal-login">
+  <div class="modal">
+    <h2>🔐 Acceso Admin</h2>
+    <div class="field"><label>Código de acceso</label><input type="text" id="lp" placeholder="Ingresa tu ID único..." /></div>
+    <button class="btn-confirm" onclick="doLogin()">Entrar</button>
+    <button onclick="closeModal('modal-login')" style="background:none;border:none;color:var(--muted);width:100%;margin-top:15px">Cerrar</button>
+  </div>
+</div>
+
+<!-- MODAL: DIAGNÓSTICO INTELIGENTE DEL SISTEMA (SOLUCIONES) -->
+<div class="overlay" id="modal-soluciones">
+  <div class="modal" style="max-width:400px;">
+    <div style="text-align:center; margin-bottom:18px;">
+      <div style="font-size:2rem; margin-bottom:8px;">🛠️</div>
+      <h2 style="margin:0; font-size:1.2rem;">Diagnóstico del Sistema</h2>
+      <p style="font-size:0.78rem; color:var(--muted); margin-top:6px;">Estado en tiempo real de todos los componentes</p>
+    </div>
+
+    <div id="diag-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
+      <!-- Ítems generados dinámicamente -->
+      <div class="diag-item" id="diag-internet">
+        <span class="diag-icon">🌐</span>
+        <div class="diag-info"><div class="diag-label">Conexión a Internet</div><div class="diag-val" id="diag-internet-val">Verificando...</div></div>
+        <div class="diag-dot" id="diag-internet-dot"></div>
+      </div>
+      <div class="diag-item" id="diag-gps-row">
+        <span class="diag-icon">📍</span>
+        <div class="diag-info"><div class="diag-label">Servicio GPS</div><div class="diag-val" id="diag-gps-val">Verificando...</div></div>
+        <div class="diag-dot" id="diag-gps-dot"></div>
+      </div>
+      <div class="diag-item">
+        <span class="diag-icon">💾</span>
+        <div class="diag-info"><div class="diag-label">Datos en caché</div><div class="diag-val" id="diag-cache-val">Calculando...</div></div>
+        <div class="diag-dot" id="diag-cache-dot" style="background:var(--green);"></div>
+      </div>
+      <div class="diag-item">
+        <span class="diag-icon">📤</span>
+        <div class="diag-info"><div class="diag-label">Registros pendientes</div><div class="diag-val" id="diag-pending-val">Calculando...</div></div>
+        <div class="diag-dot" id="diag-pending-dot"></div>
+      </div>
+      <div class="diag-item">
+        <span class="diag-icon">⚙️</span>
+        <div class="diag-info"><div class="diag-label">Base de datos</div><div class="diag-val" id="diag-db-val">Verificando...</div></div>
+        <div class="diag-dot" id="diag-db-dot"></div>
+      </div>
+    </div>
+
+    <div style="display:grid; gap:10px; margin-bottom:12px;">
+      <button class="btn-confirm" onclick="ejecutarDiagnostico()" style="padding:12px;">🔄 Actualizar Diagnóstico</button>
+      <button class="btn-confirm" onclick="repararGPSYDemas(); closeModal('modal-soluciones')" style="padding:12px; background:rgba(168,85,247,0.2); border:1px solid rgba(168,85,247,0.4); color:#c084fc;">⚡ Reparar GPS y Conexión</button>
+      <button class="btn-confirm" onclick="forzarSincronizacion(); closeModal('modal-soluciones')" style="padding:12px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); color:#34d399;">📡 Sincronizar Datos Ahora</button>
+    </div>
+    <button onclick="closeModal('modal-soluciones')" style="background:none;border:none;color:var(--muted);width:100%;padding:10px;">Cerrar</button>
+  </div>
+</div>
+
+<div class="overlay" id="modal-gps-help">
+  <div class="modal">
+    <h2 style="color: var(--gold); margin-bottom: 15px;">📍 Verificación de Ubicación</h2>
+    <p style="color: var(--text); font-size: 0.9rem; margin-bottom: 15px;">El sistema necesita verificar que estás en el rango de la iglesia para registrar asistencia.</p>
+    
+    <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-bottom: 20px; font-size: 0.85rem;">
+      <h3 style="color: var(--gold); margin-top: 0; margin-bottom: 10px; font-size: 0.9rem;">✅ Pasos para activar:</h3>
+      <ol style="margin: 0; padding-left: 20px; color: var(--muted); line-height: 1.8;">
+        <li style="margin-bottom: 8px;">Asegúrate de tener el <strong>GPS activado</strong> en tu teléfono.</li>
+        <li style="margin-bottom: 8px;">Cuando el navegador solicite acceso a tu ubicación, presiona <strong>"Permitir"</strong>.</li>
+        <li>Si ya lo rechazaste antes, ve al candado 🔒 en la barra de dirección del navegador y activa la ubicación.</li>
+      </ol>
+    </div>
+
+    <button class="btn-confirm" onclick="triggerLocationPermissionCheck(); closeModal('modal-gps-help')" style="margin-bottom: 10px;">📍 Activar Ubicación</button>
+    <button onclick="closeModal('modal-gps-help')" style="background:none;border:none;color:var(--muted);width:100%;padding:10px;">Cerrar</button>
+  </div>
+</div>
+
+<div class="overlay" id="modal-registro">
+  <div class="modal">
+    <h2 id="mreg-nombre" style="margin-bottom:10px"></h2>
+    <p id="mreg-min" style="text-align:center;color:var(--gold);font-weight:700;margin-bottom:20px"></p>
+    
+    <div id="admin-id-container" style="display:none; background:var(--surf2); padding:15px; border-radius:15px; margin-bottom:20px;">
+      <p style="font-size:0.8rem; color:var(--gold); font-weight:700; margin-bottom:10px;">⚠️ Requiere Código de acceso</p>
+      <div class="field">
+        <input type="text" id="admin-id-input" placeholder="ID de acceso especial" />
+      </div>
+      <button class="btn-sm" style="width:100%; margin-top:10px;" onclick="validarAdminId()">Validar</button>
+    </div>
+
+    <div id="otros-ministerios" style="display:none;background:var(--surf2);padding:15px;border-radius:15px;margin-bottom:20px">
+      <p style="font-size:.7rem;font-weight:700;color:var(--muted);margin-bottom:10px">TAMBIÉN REGISTRAR EN:</p>
+      <div id="otros-min-lista"></div>
+    </div>
+    <button class="btn-confirm" id="btn-confirmar" onclick="confirmarAsistencia()">Confirmar</button>
+    <button onclick="closeModal('modal-registro')" style="background:none;border:none;color:var(--muted);width:100%;margin-top:15px">Cancelar</button>
+  </div>
+</div>
+
+<div class="overlay" id="modal-edit-time">
+  <div class="modal">
+    <h2 style="color:var(--gold);margin-bottom:10px">Editar Hora</h2>
+    <p id="edit-time-name" style="text-align:center;font-weight:700;margin-bottom:15px"></p>
+    <div class="field">
+      <label>Nueva Hora</label>
+      <input type="time" id="inp-edit-time" style="width:100%;font-size:1.2rem;padding:10px;text-align:center;" />
+    </div>
+    <input type="hidden" id="edit-time-id" />
+    <button class="btn-confirm" onclick="guardarNuevaHora()" style="margin-top:10px;">Guardar Cambios</button>
+    <button onclick="closeModal('modal-edit-time')" style="background:none;border:none;color:var(--muted);width:100%;margin-top:15px">Cancelar</button>
+  </div>
+</div>
+
+
+
+<div class="overlay" id="modal-update">
+  <div class="modal update-modal">
+    <div class="update-rocket-container">
+      <div class="update-rocket-bg"></div>
+      <div class="update-rocket-emoji">🚀</div>
+      <div class="update-particles">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+    <h2 class="update-title">¡Nueva Versión Disponible!</h2>
+    <p class="update-message">Hemos preparado mejoras premium, mayor estabilidad y optimizaciones de seguridad para tu experiencia MIDS. Actualiza ahora para continuar de forma fluida.</p>
+    <div class="update-features">
+      <div class="update-feature">
+        <div class="update-feature-icon">⚡</div>
+        <div>Más Rápido</div>
+      </div>
+      <div class="update-feature">
+        <div class="update-feature-icon">🛡️</div>
+        <div>Seguro</div>
+      </div>
+      <div class="update-feature">
+        <div class="update-feature-icon">✨</div>
+        <div>Nuevo MIDS</div>
+      </div>
+    </div>
+    <div class="update-btns">
+      <button class="update-btn-later" onclick="postponeUpdate()">Más tarde</button>
+      <button class="update-btn-go" onclick="applyUpdate()">Actualizar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONFIRMACIÓN DE PUSH UPDATE -->
+<div class="overlay" id="modal-push-update-confirm">
+  <div class="modal push-update-modal">
+    <div class="push-update-icon">🚀</div>
+    <h2 class="push-update-title">Notificar Nueva Actualización</h2>
+    <p class="push-update-desc">Estás por enviar una señal global a todos los dispositivos conectados para forzar la visualización del modal de actualización.</p>
+    <div class="push-update-version">VERSIÓN A NOTIFICAR: <span id="lbl-push-version">3.4.8</span></div>
+    <div class="push-update-warning">
+      ⚠️ Esta acción afectará a todos los coordinadores y usuarios en tiempo real.
+    </div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+      <button class="btn-confirm" style="background:var(--surf2); color:var(--text);" onclick="closeModal('modal-push-update-confirm')">Cancelar</button>
+      <button class="btn-confirm" style="background:linear-gradient(135deg, var(--gold-dim) 0%, var(--gold) 100%); color:#0B0F0E; font-weight:700;" onclick="ejecutarPushRemoteUpdate()">¡Enviar Señal!</button>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- MODAL: CONFIRMACIÓN DE MÚLTIPLES MINISTERIOS -->
+<div class="overlay" id="modal-multi-min">
+  <div class="modal" style="max-width:380px;">
+    <div style="font-size:2.2rem; text-align:center; margin-bottom:8px;">👥</div>
+    <h3 style="margin:0 0 8px 0; font-size:1.1rem; color:var(--gold); text-align:center;">Detección de Múltiples Ministerios</h3>
+    <p id="multi-min-desc" style="margin:0 0 16px 0; font-size:0.85rem; color:var(--text); text-align:center; line-height:1.4;"></p>
+    <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); border-radius:10px; padding:10px; font-size:0.78rem; color:var(--gold); margin-bottom:16px;">
+      💡 Esta persona quedará registrada para servir en ambos ministerios activamente.
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <button class="btn-confirm" style="background:var(--surf2); color:var(--text);" onclick="closeModal('modal-multi-min')">Cancelar</button>
+      <button class="btn-confirm" style="background:linear-gradient(135deg, var(--gold-dim) 0%, var(--gold) 100%); color:#0B0F0E; font-weight:700;" id="btn-confirm-multi-min">✔ Sí, Agregar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDICIÓN DE HORA DE ASISTENCIA -->
+<div class="overlay" id="modal-edit-time">
+  <div class="modal" style="max-width:340px;">
+    <h3 style="margin:0 0 4px 0; font-size:1rem; color:var(--gold);">✏️ Editar Hora de Llegada</h3>
+    <p id="edit-time-name" style="margin:0 0 16px 0; font-size:0.8rem; color:var(--muted); font-weight:600;"></p>
+    <input type="hidden" id="edit-time-id" />
+    <div class="field">
+      <label>Nueva hora de llegada</label>
+      <input type="time" id="inp-edit-time" class="cfg-input" style="font-size:1.1rem; padding:12px;" />
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px;">
+      <button class="btn-confirm" style="background:var(--surf2); color:var(--text);" onclick="closeModal('modal-edit-time')">Cancelar</button>
+      <button class="btn-confirm" style="background:linear-gradient(135deg,#7c3aed,#34D399); color:#fff;" onclick="guardarNuevaHora()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR NOMBRE DE PERSONA -->
+<div class="overlay" id="modal-edit-name">
+  <div class="modal" style="max-width:360px;">
+    <div style="text-align:center; margin-bottom:14px;">
+      <div style="font-size:1.8rem; margin-bottom:6px;">✏️</div>
+      <h3 style="margin:0; font-size:1rem; color:var(--gold);">Editar Nombre</h3>
+      <p id="edit-name-original" style="margin:4px 0 0; font-size:0.75rem; color:var(--muted);"></p>
+    </div>
+    <div class="field">
+      <label>Nuevo nombre visible</label>
+      <input type="text" id="inp-edit-name" placeholder="Nombre a mostrar..." style="width:100%;background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:0.9rem;color:var(--text);" />
+    </div>
+    <input type="hidden" id="edit-name-id" />
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px;">
+      <button class="btn-confirm" style="background:var(--surf2); color:var(--text);" onclick="closeModal('modal-edit-name')">Cancelar</button>
+      <button class="btn-confirm" onclick="guardarNombreEditado()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: PANEL DE LÍDERES -->
+<div class="overlay" id="modal-leader">
+  <div class="modal" style="max-width:420px; max-height:85vh; display:flex; flex-direction:column;">
+    <!-- Estado 1: Login -->
+    <div id="leader-login-state">
+      <div style="text-align:center; margin-bottom:14px;">
+        <div style="font-size:1.8rem; margin-bottom:6px;">👥</div>
+        <h3 style="margin:0; font-size:1rem; color:var(--gold);">Panel de Líderes</h3>
+        <p style="margin:6px 0 0; font-size:0.75rem; color:var(--muted);">Ingresa tu código de líder para acceder</p>
+      </div>
+      <div class="field">
+        <label>Código de Líder</label>
+        <input type="text" id="inp-leader-code" placeholder="Tu código..." style="width:100%;background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:0.9rem;color:var(--text);" onkeydown="if(event.key==='Enter') loginLeader()" />
+      </div>
+      <button class="btn-confirm" onclick="loginLeader()" style="width:100%; margin-top:10px;">Entrar</button>
+    </div>
+    <!-- Estado 2: Lista de personas del ministerio -->
+    <div id="leader-list-state" style="display:none; flex:1; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 id="leader-ministry-name" style="margin:0; font-size:0.95rem; color:var(--gold);">Ministerio</h3>
+        <button onclick="closeModal('modal-leader'); resetLeaderPanel();" style="background:none;border:none;color:var(--muted);font-size:0.75rem;cursor:pointer;">✕ Cerrar</button>
+      </div>
+      <div id="leader-person-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px;"></div>
+    </div>
+    <!-- Estado 3: Historial de ausencias de una persona -->
+    <div id="leader-history-state" style="display:none; flex:1; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button onclick="showLeaderList()" style="background:none;border:none;color:var(--gold);font-size:1rem;cursor:pointer;">←</button>
+          <h3 id="leader-history-name" style="margin:0; font-size:0.95rem; color:var(--gold);">Persona</h3>
+        </div>
+        <button onclick="closeModal('modal-leader'); resetLeaderPanel();" style="background:none;border:none;color:var(--muted);font-size:0.75rem;cursor:pointer;">✕ Cerrar</button>
+      </div>
+      <div id="leader-absence-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+    <!-- Estado 4: Registrar ausencia -->
+    <div id="leader-absence-state" style="display:none;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
+        <button onclick="showLeaderHistoryBack()" style="background:none;border:none;color:var(--gold);font-size:1rem;cursor:pointer;">←</button>
+        <h3 style="margin:0; font-size:0.95rem; color:var(--gold);">Registrar Ausencia</h3>
+      </div>
+      <p id="leader-absence-person" style="margin:0 0 12px; font-size:0.85rem; color:var(--text-primary); font-weight:600;"></p>
+      <div class="field">
+        <label>Fecha de la ausencia</label>
+        <input type="date" id="inp-absence-date" style="width:100%;background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:0.85rem;color:var(--text);" />
+      </div>
+      <div class="field">
+        <label>Motivo de la ausencia (Justificación)</label>
+        <textarea id="inp-absence-reason" rows="3" placeholder="Escribe el motivo o justificación..." style="width:100%;background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:0.85rem;color:var(--text);resize:vertical;"></textarea>
+      </div>
+      <button class="btn-confirm" onclick="guardarAusencia()" style="width:100%; margin-top:10px;">Guardar Ausencia</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════ SPLASH SCREEN ═══════════
+dismissSplash();
+function dismissSplash() {
+  const splash = document.getElementById('splash-screen');
+  if (!splash) return;
+  // Minimum display time 2.8s (let animations play), then fade out
+  setTimeout(() => {
+    splash.classList.add('fade-out');
+    setTimeout(() => splash.remove(), 700);
+  }, 2800);
+}
+
+// ═══════════ BOTTOM NAV & HELP MODAL FUNCTIONS ═══════════
+function navigateTo(view) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const btn = document.querySelector(`.nav-item[data-view="${view}"]`);
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === 'view-' + view));
+}
+function openHelpModal() {
+  document.getElementById('modal-help').classList.add('open');
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
+}
+window.abrirModalSoluciones = window.abrirModalSoluciones || function() {
+  document.getElementById('modal-soluciones').classList.add('open');
+};
+window.showLogin = window.showLogin || function() {
+  document.getElementById('modal-login').classList.add('open');
+};
+</script>
+
+</body>
+</html>

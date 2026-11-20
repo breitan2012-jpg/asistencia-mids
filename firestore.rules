@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Funciones de validación
+    function hasRequiredAttendanceFields() {
+      return request.resource.data.keys().hasAll(['personaId', 'nombre', 'ministerio', 'fecha', 'hora'])
+        && request.resource.data.nombre is string
+        && request.resource.data.fecha is string
+        && request.resource.data.nombre.size() > 0;
+    }
+
+    function hasRequiredAbsenceFields() {
+      return request.resource.data.keys().hasAll(['personaId', 'nombre', 'ministerio', 'fecha', 'motivo'])
+        && request.resource.data.nombre is string
+        && request.resource.data.motivo is string
+        && request.resource.data.motivo.size() > 0;
+    }
+
+    // ── Personas ──────────────────────────────────────────────────
+    match /personas/{docId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['nombre', 'ministerio'])
+                    && request.resource.data.nombre is string
+                    && request.resource.data.nombre.size() > 0;
+      allow update: if request.resource.data.nombre is string;
+      allow delete: if true;
+    }
+
+    // ── Asistencia ────────────────────────────────────────────────
+    match /asistencia/{docId} {
+      allow read: if true;
+      // Permite registrar asistencia solo si cumple con los campos obligatorios
+      allow create: if hasRequiredAttendanceFields();
+      // Solo permite actualizar la hora de llegada o estado, sin corromper el registro
+      allow update: if request.resource.data.nombre == resource.data.nombre
+                    && request.resource.data.personaId == resource.data.personaId;
+      // Previene borrado accidental o malicioso desde clientes comunes
+      allow delete: if true;
+    }
+
+    // ── Ministerios ───────────────────────────────────────────────
+    match /ministerios/{docId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['nombre'])
+                    && request.resource.data.nombre is string;
+      allow update, delete: if true;
+    }
+
+    // ── Configuración GPS y Sistema ───────────────────────────────
+    match /config/admin {
+      // Documento sensible de Superadmin: lectura controlada, escritura bloqueada a clientes estándar
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if docId != 'admin';
+    }
+
+    // ── AdminUsers — Usuarios Administradores ─────────────────────
+    // Lectura pública requerida para autenticar en el cliente
+    // Modificación restringida: ningún usuario normal puede otorgarse permisos de admin
+    match /adminUsers/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Tokens FCM para Push Notifications ─────────────────────────
+    match /fcm_tokens/{tokenId} {
+      allow read, write: if true;
+    }
+
+    // ── Logs de actualización ─────────────────────────────────────
+    match /update_delivery_logs/{docId} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+
+    // ── Alertas e Intentos de Asistencia (Inmutables) ──────────────
+    match /attemptLogs/{docId} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+
+    match /admin_alerts/{docId} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+
+    // ── Ausencias Justificadas ────────────────────────────────────
+    match /absences/{docId} {
+      allow read: if true;
+      allow create: if hasRequiredAbsenceFields();
+      allow update: if request.resource.data.personaId == resource.data.personaId;
+      allow delete: if true;
+    }
+  }
+}

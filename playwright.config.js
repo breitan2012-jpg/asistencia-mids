@@ -1,0 +1,2 @@
+import { defineConfig, devices } from '@playwright/test';
+export default defineConfig({testDir:'./tests/ui',fullyParallel:false,workers:1,timeout:60000,use:{baseURL:'http://127.0.0.1:8081',serviceWorkers:'block',trace:'retain-on-failure'},projects:[{name:'desktop',use:{viewport:{width:1440,height:1000}}},{name:'android',use:{...devices['Pixel 7'],defaultBrowserType:'chromium'}},{name:'iphone',use:{...devices['iPhone 13'],defaultBrowserType:'webkit'}}]});
