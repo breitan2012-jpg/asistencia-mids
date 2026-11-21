@@ -13,7 +13,7 @@ services:
       - key: GOOGLE_CLOUD_PROJECT
         value: asistencia-656b3
       - key: MIDS_ALLOWED_ORIGINS
-        value: https://asistencia-656b3.web.app,https://asistencia-656b3.firebaseapp.com
+        value: https://asistencia-656b3.web.app,https://asistencia-656b3.firebaseapp.com,https://admin-57368.web.app
       - key: MIDS_PEPPER_FILE
         value: /etc/secrets/mids-pepper
       - key: MIDS_FIREBASE_CREDENTIAL_FILE
