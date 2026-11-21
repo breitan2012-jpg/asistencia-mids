@@ -30,7 +30,12 @@ export function createService({ store, pepper, now = () => new Date() }) {
       }
       if (!session) fail(401, 'Recarga la aplicación para recuperar tu sesión.');
       const sessionPath = `secureSessions/${session.id}`;
-      const candidate = session.profileId && session.adminExpiresAt > +now() ? await tx.get(`secureProfiles/${session.profileId}`) : null;
+      // A deployment can advance the authentication epoch to invalidate every
+      // previously issued administrative session. Old sessions did not carry
+      // an epoch, so they deliberately become public sessions after this fix.
+      const authEpoch = Number.isSafeInteger(settings.authEpoch) && settings.authEpoch > 0 ? settings.authEpoch : 1;
+      const candidate = session.profileId && session.adminExpiresAt > +now() && session.authEpoch === authEpoch
+        ? await tx.get(`secureProfiles/${session.profileId}`) : null;
       const profile = candidate?.active !== false && candidate?.epoch === session.epoch ? candidate : null;
       const superOnly = () => { if (profile?.role !== 'superadmin') fail(403, 'Esta acción requiere superadministración.'); };
       const adminOnly = () => { if (!profile) fail(403, 'Ingresa por Administración.'); };
@@ -42,7 +47,7 @@ export function createService({ store, pepper, now = () => new Date() }) {
         const valid = await verifyPassword(body.code, credential?.hash || settings.dummyHash);
         const user = credential ? await tx.get(`secureProfiles/${credential.profileId}`) : null;
         if (!valid || !user || user.active === false || user.credentialKey !== key) fail(401, 'Código incorrecto o desactivado.');
-        tx.set(sessionPath, { profileId: user.id, epoch: user.epoch, adminExpiresAt: +now() + 8 * 3600000 }, true);
+        tx.set(sessionPath, { profileId: user.id, epoch: user.epoch, authEpoch, adminExpiresAt: +now() + 8 * 3600000 }, true);
         return { data: profileView(user) };
       }
       if (action === 'logout') { tx.set(sessionPath, { profileId: null, adminExpiresAt: 0 }, true); return { data: { ok: true } }; }
