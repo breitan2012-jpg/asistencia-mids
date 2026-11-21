@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { credentialKey, digest, hashPassword, randomToken, verifyPassword } from './crypto.mjs';
-import { dateCR, timeCR, validDate, summarize, norm, present } from './domain.mjs';
+import { dateCR, timeCR, validDate, summarize, norm, present, countsOnDate } from './domain.mjs';
 import { validAttendanceLocation } from './geofence.mjs';
 export class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const fail = (status, message) => { throw new ApiError(status, message); };
 const identifier = x => typeof x === 'string' && /^[\w-]{1,160}$/.test(x) ? x : fail(400, 'Identificador inválido.');
 const string = (value, max = 500) => typeof value === 'string' && value.trim().length <= max ? value.trim() : '';
 const required = (value, label, max) => string(value, max) || fail(400, `${label} es obligatorio.`);
-const profileView = p => p ? { id: p.id, name: p.name, role: p.role, ministerio: p.ministerio, canManageAbsences: !!p.canManageAbsences, active: p.active !== false } : null;
+const profileView = p => p ? { id: p.id, name: p.name, role: p.role, ministerio: p.ministerio, canManageAbsences: p.role === 'leader' || !!p.canManageAbsences, active: p.active !== false } : null;
 const privateFields=new Set(['registradoPorId','adminId','userId','pin','code','credentialKey','hash']);
 const publicView=value=>Array.isArray(value)?value.map(publicView):value && typeof value==='object' && Object.getPrototypeOf(value)===Object.prototype?Object.fromEntries(Object.entries(value).filter(([key])=>!privateFields.has(key)).map(([key,v])=>[key,publicView(v)])):value;
 const collections = ['personas', 'ministerios', 'asistencia', 'absences', 'fechas', 'config', 'adminUsers', 'admin_alerts', 'attemptLogs', 'update_delivery_logs', 'fcm_tokens', 'auditLogs'];
@@ -170,7 +170,7 @@ export function createService({ store, pepper, now = () => new Date() }) {
           if (Object.keys(data).some(k => !['nombre','nombreDisplay','ministerio'].includes(k))) fail(400, 'Campos de persona no autorizados.');
           if (body.operation !== 'delete') data.ministerio = profile.ministerio;
         } else {
-          if (collection !== 'absences' || !profile.canManageAbsences) fail(403, 'No tienes autorización para modificar este registro.');
+          if (collection !== 'absences') fail(403, 'No tienes autorización para modificar este registro.');
           if (Object.keys(data).some(k => !['personaId','fecha','ministerio','motivo'].includes(k))) fail(400, 'Solo puedes corregir el motivo de una ausencia.');
           const ministry = before?.ministerio || data.ministerio;
           if (ministry && ministry !== profile.ministerio) fail(403, 'No puedes modificar otro ministerio.');
@@ -183,6 +183,7 @@ export function createService({ store, pepper, now = () => new Date() }) {
         const person = await tx.get(`personas/${identifier(personId)}`); if (!person) fail(404, 'Persona no encontrada.');
         if (profile.role === 'leader' && person.ministerio !== profile.ministerio) fail(403, 'La persona pertenece a otro ministerio.');
         if (before && (data.personaId && data.personaId !== before.personaId || data.fecha && data.fecha !== before.fecha || data.ministerio && data.ministerio !== before.ministerio)) fail(400, 'No se puede reasignar la ausencia a otra persona, fecha o ministerio.');
+        if (!countsOnDate(person, date)) fail(400, 'Esta fecha no cuenta como asistencia para esta persona.');
         if (profile.role === 'leader' && (await tx.list('asistencia', [['personaId', '==', personId], ['fecha', '==', date]])).some(present)) fail(403, 'La persona está presente. Solo superadministración puede corregirla.');
         data.personaId = person.id; data.ministerio = person.ministerio; data.nombre = person.nombre;
         if (!before && (await tx.list('absences',[['personaId','==',personId],['fecha','==',date]])).some(r=>!r.deletedAt && r.ministerio===person.ministerio)) fail(409,'Ya existe una ausencia para esta persona y fecha.');

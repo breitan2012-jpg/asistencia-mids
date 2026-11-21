@@ -9,31 +9,40 @@ export function period(year, month) {
 }
 export const norm = name => String(name || '').trim().toLocaleLowerCase('es-CR');
 export const present = row => !row.deletedAt && !['anulado', 'ausente', 'pendiente'].includes(row.estado || 'presente');
+export const weekdayCR = date => new Date(`${date}T12:00:00Z`).getUTCDay();
+export function countsOnDate(person, date) {
+  const normalized = norm(person?.nombreDisplay || person?.nombre);
+  if (normalized === 'fabiola sánchez' || normalized === 'fabiola sanchez') return weekdayCR(date) === 0;
+  const days = person?.attendanceSchedule?.countedDays;
+  return !Array.isArray(days) || days.length === 0 || days.includes(weekdayCR(date));
+}
 export function summarize({ people, records, absences, rosters, from, to }) {
+  const peopleById = new Map(people.map(person => [person.id, person]));
   const seen = new Map();
   for (const r of records.filter(present)) { const key = JSON.stringify([r.fecha, r.personaId, r.ministerio]); if (!seen.has(key)) seen.set(key, r); }
-  const rows = [...seen.values()].map(r => ({ ...r, estado: 'presente' }));
+  const rows = [...seen.values()].map(r => ({ ...r, estado: 'presente', countsTowardAttendance: countsOnDate(peopleById.get(r.personaId), r.fecha) }));
   const presenceKeys = new Set(rows.map(r => JSON.stringify([r.fecha, r.personaId, r.ministerio])));
   const absenceKeys = new Set();
-  for (const a of absences.filter(a => !a.deletedAt)) {
+  for (const a of absences.filter(a => !a.deletedAt && countsOnDate(peopleById.get(a.personaId), a.fecha))) {
     const key = JSON.stringify([a.fecha, a.personaId, a.ministerio]);
     if (!presenceKeys.has(key) && !absenceKeys.has(key)) { absenceKeys.add(key); rows.push({ ...a, estado: 'ausente', source: 'registrada' }); }
   }
   let expected = 0;
   for (const roster of rosters.filter(r => r.closed && !r.deletedAt)) {
-    expected += roster.people.length;
-    for (const p of roster.people) {
+    const expectedPeople = roster.people.filter(p => countsOnDate(peopleById.get(p.id), roster.fecha));
+    expected += expectedPeople.length;
+    for (const p of expectedPeople) {
       const key = JSON.stringify([roster.fecha, p.id, roster.ministerio]);
       if (!presenceKeys.has(key) && !absenceKeys.has(key)) { absenceKeys.add(key); rows.push({ ...p, personaId: p.id, fecha: roster.fecha, ministerio: roster.ministerio, estado: 'ausente', source: 'lista_confirmada', id: `roster:${roster.id}:${p.id}` }); }
     }
   }
-  if (from === to) for (const p of people) {
+  if (from === to) for (const p of people.filter(person => countsOnDate(person, from))) {
     const key = JSON.stringify([from, p.id, p.ministerio]);
     if (!presenceKeys.has(key) && !absenceKeys.has(key)) rows.push({ ...p, personaId: p.id, fecha: from, estado: 'sin_registro', source: 'sin_lista_confirmada' });
   }
-  const known = rows.filter(r => r.estado !== 'sin_registro'), presentCount = rows.filter(r => r.estado === 'presente').length;
+  const known = rows.filter(r => r.estado !== 'sin_registro'), presentCount = rows.filter(r => r.estado === 'presente' && r.countsTowardAttendance !== false).length;
   const covered = rosters.filter(r => r.closed && !r.deletedAt);
-  const coveredKeys = new Set(covered.flatMap(r => r.people.map(p => JSON.stringify([r.fecha, p.id, r.ministerio]))));
+  const coveredKeys = new Set(covered.flatMap(r => r.people.filter(p => countsOnDate(peopleById.get(p.id), r.fecha)).map(p => JSON.stringify([r.fecha, p.id, r.ministerio]))));
   const ministries = new Set([...people,...known,...covered].map(r=>r.ministerio));
   const days=[];for(let t=Date.parse(from+'T12:00:00Z');t<=Date.parse(to+'T12:00:00Z');t+=86400000)days.push(new Date(t).toISOString().slice(0,10));
   const rosterDates=new Set(covered.map(r=>JSON.stringify([r.fecha,r.ministerio])));
