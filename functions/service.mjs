@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { credentialKey, digest, hashPassword, randomToken, verifyPassword } from './crypto.mjs';
 import { dateCR, timeCR, validDate, summarize, norm, present } from './domain.mjs';
+import { validAttendanceLocation } from './geofence.mjs';
 export class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const fail = (status, message) => { throw new ApiError(status, message); };
 const identifier = x => typeof x === 'string' && /^[\w-]{1,160}$/.test(x) ? x : fail(400, 'Identificador inválido.');
@@ -104,6 +105,7 @@ export function createService({ store, pepper, now = () => new Date() }) {
       if (action === 'dbRead') {
         if (collection === 'adminUsers') { superOnly(); return { data: (await tx.list('secureProfiles')).map(p => ({ ...profileView(p), userId: '', isAdmin: p.active !== false })) }; }
         if (collection === 'config') {
+          if (docId === 'emailjs') fail(403, 'Configuración no disponible.');
           if (!['gps', 'system', 'identityReset'].includes(docId)) superOnly();
           if (docId === 'admin') fail(403, 'Los códigos solo se verifican en el servidor.');
         } else if (['admin_alerts', 'attemptLogs', 'update_delivery_logs', 'fcm_tokens', 'auditLogs'].includes(collection)) superOnly();
@@ -114,7 +116,8 @@ export function createService({ store, pepper, now = () => new Date() }) {
         }
         if (!profile && collection === 'asistencia') { const date = filters.find(f => f[0] === 'fecha' && f[1] === '==')?.[2]; if (docId || date !== dateCR(now())) fail(403, 'El historial requiere Administración.'); }
         const rows = docId ? [await tx.get(`${collection}/${docId}`)].filter(Boolean) : await tx.list(collection, filters, collection === 'asistencia' ? 15000 : 5000);
-        const allowed = rows.filter(r => !r.deletedAt && (profile?.role !== 'leader' || (collection === 'ministerios' ? r.nombre === profile.ministerio : !personal.includes(collection) || r.ministerio === profile.ministerio)));
+        const allowed = rows.filter(r => !r.deletedAt && !(collection === 'config' && r.id === 'emailjs') &&
+          (profile?.role !== 'leader' || (collection === 'ministerios' ? r.nombre === profile.ministerio : !personal.includes(collection) || r.ministerio === profile.ministerio)));
         if (docId && rows.length && !allowed.length && profile?.role === 'leader') fail(403, 'No puedes consultar otro ministerio.');
         const projected = !profile && collection === 'asistencia' ? allowed.filter(present).map(r => ({ id: r.id, personaId: r.personaId, ministerio: r.ministerio, fecha: r.fecha, estado: r.estado })) : !profile && collection === 'personas' ? allowed.map(r => ({ id: r.id, nombre: r.nombre, nombreDisplay:r.nombreDisplay, ministerio: r.ministerio, esMultiple: r.esMultiple })) : allowed;
         return { data: publicView(docId ? projected[0] || null : projected) };
@@ -134,7 +137,20 @@ export function createService({ store, pepper, now = () => new Date() }) {
         const existing = await tx.list('asistencia', [['personaId', '==', person.id], ['fecha', '==', data.fecha]]);
         const duplicate = existing.find(r => r.ministerio === person.ministerio && present(r)); if (duplicate) return { data: { id: duplicate.id, duplicate: true } };
         const rid = `${data.fecha}_${digest(person.id + '\0' + person.ministerio).slice(0, 32)}`;
-        tx.set(`asistencia/${rid}`, { personaId: person.id, nombre: person.nombre, ministerio: person.ministerio, fecha: data.fecha, hora: required(data.hora, 'La hora', 50), timestamp: data.timestamp || now(), registradoPor: profile?.name || operator, estado: data.estado === 'pendiente' ? 'pendiente' : 'presente', createdAt: +now() });
+        if (existing.some(r => r.id === rid || (r.ministerio === person.ministerio && !r.deletedAt && r.estado === 'pendiente'))) {
+          fail(409, 'Ya hay un registro para revisión administrativa. No se creó otro.');
+        }
+        if (profile?.role !== 'superadmin') {
+          const fix = data.location;
+          const gps = await tx.get('config/gps');
+          const markedAt = Date.parse(data.timestamp);
+          if (!validAttendanceLocation(fix, gps) || !Number.isFinite(markedAt) ||
+              Math.abs(markedAt - fix.capturedAt) > 30000 || fix.capturedAt > +now() + 30000 ||
+              dateCR(new Date(fix.capturedAt)) !== data.fecha) {
+            fail(422, 'Ubicación fuera de rango o imprecisa. La asistencia no se guardó.');
+          }
+        }
+        tx.set(`asistencia/${rid}`, { personaId: person.id, nombre: person.nombre, ministerio: person.ministerio, fecha: data.fecha, hora: required(data.hora, 'La hora', 50), timestamp: data.timestamp || now(), registradoPor: profile?.name || operator, estado: 'presente', createdAt: +now() });
         return { data: { id: rid } };
       }
       if (['admin_alerts', 'attemptLogs', 'update_delivery_logs', 'fcm_tokens'].includes(collection) && body.operation !== 'delete') {
@@ -143,9 +159,17 @@ export function createService({ store, pepper, now = () => new Date() }) {
       if (collection === 'adminUsers' || collection === 'auditLogs' || collection === 'config' && ['admin', 'identityReset'].includes(docId)) fail(403, 'Usa la herramienta administrativa específica.');
       const rid = docId || randomUUID(), path = `${collection}/${rid}`, before = docId ? await tx.get(path) : null;
       if (profile?.role === 'leader') {
-        if (collection !== 'absences' || !profile.canManageAbsences) fail(403, 'No tienes autorización para modificar este registro.');
-        if (Object.keys(data).some(k => !['personaId','fecha','ministerio','motivo'].includes(k))) fail(400, 'Solo puedes corregir el motivo de una ausencia.');
-        const ministry = before?.ministerio || data.ministerio; if (ministry && ministry !== profile.ministerio) fail(403, 'No puedes modificar otro ministerio.');
+        if (collection === 'personas') {
+          if ((before && before.ministerio !== profile.ministerio) ||
+              (data.ministerio && data.ministerio !== profile.ministerio)) fail(403, 'No puedes modificar otro ministerio.');
+          if (Object.keys(data).some(k => !['nombre','nombreDisplay','ministerio'].includes(k))) fail(400, 'Campos de persona no autorizados.');
+          if (body.operation !== 'delete') data.ministerio = profile.ministerio;
+        } else {
+          if (collection !== 'absences' || !profile.canManageAbsences) fail(403, 'No tienes autorización para modificar este registro.');
+          if (Object.keys(data).some(k => !['personaId','fecha','ministerio','motivo'].includes(k))) fail(400, 'Solo puedes corregir el motivo de una ausencia.');
+          const ministry = before?.ministerio || data.ministerio;
+          if (ministry && ministry !== profile.ministerio) fail(403, 'No puedes modificar otro ministerio.');
+        }
       } else superOnly();
       if (docId && !before) fail(404, 'Registro no encontrado.');
       if (collection === 'absences') {
@@ -173,7 +197,7 @@ export function createService({ store, pepper, now = () => new Date() }) {
         data.ministerio = ministry;
       }
       if (collection === 'config') {
-        if (!['gps','emailjs','system'].includes(docId) || body.operation === 'delete') fail(403, 'Configuración no autorizada.');
+        if (!['gps','system'].includes(docId) || body.operation === 'delete') fail(403, 'Configuración no autorizada.');
         if (docId === 'gps' && (![data.lat,data.lng,data.radius].every(Number.isFinite) || Math.abs(data.lat)>90 || Math.abs(data.lng)>180 || data.radius<1 || data.radius>5000 || typeof data.required !== 'boolean')) fail(400,'Ubicación o radio inválidos.');
       }
       if (body.version !== undefined && body.version !== (before?.version || 0)) fail(409, 'Otra persona modificó el registro. Vuelve a cargarlo.');
