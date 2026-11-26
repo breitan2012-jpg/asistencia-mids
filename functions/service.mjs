@@ -11,13 +11,17 @@ const profileView = p => p ? { id: p.id, name: p.name, role: p.role, ministerio:
 const privateFields=new Set(['registradoPorId','adminId','userId','pin','code','credentialKey','hash']);
 const publicView=value=>Array.isArray(value)?value.map(publicView):value && typeof value==='object' && Object.getPrototypeOf(value)===Object.prototype?Object.fromEntries(Object.entries(value).filter(([key])=>!privateFields.has(key)).map(([key,v])=>[key,publicView(v)])):value;
 const collections = ['personas', 'ministerios', 'asistencia', 'absences', 'fechas', 'config', 'adminUsers', 'admin_alerts', 'attemptLogs', 'update_delivery_logs', 'fcm_tokens', 'auditLogs'];
+const masterOrigins = new Set(['https://admin-57368.web.app', 'https://admin-57368.firebaseapp.com']);
 export function createService({ store, pepper, now = () => new Date() }) {
   if (!pepper || pepper.length < 32) throw new Error('A server-only pepper is required.');
   async function throttle(key, maximum) {
     const over = await store.transaction(async tx => { const path = `secureRateLimits/${digest(key)}`, previous = await tx.get(path), time = +now(); const count = previous?.until > time ? previous.count + 1 : 1; tx.set(path, { count, until: previous?.until > time ? previous.until : time + 900000 }); return count > maximum; });
     if (over) fail(429, 'Demasiados intentos. Espera unos minutos.');
   }
-  return { async dispatch({ action, body = {}, token, ip = 'unknown' }) {
+  return { async dispatch({ action, body = {}, token, ip = 'unknown', origin }) {
+    const masterAttendance = action === 'masterAttendance';
+    if (masterAttendance && !masterOrigins.has(origin)) fail(403, 'El registro sin ubicación está disponible desde MIDS Master.');
+    if (masterAttendance) await throttle(`master-attendance:${credentialKey(ip, pepper)}`, 300);
     if (action === 'login') { required(body.code, 'El código', 128); await throttle(`ip:${credentialKey(ip, pepper)}`, 12); await throttle(`code:${credentialKey(body.code, pepper)}`, 12); }
     return store.transaction(async tx => {
       const settings = await tx.get('secureAdmin/config');
@@ -100,7 +104,15 @@ export function createService({ store, pepper, now = () => new Date() }) {
         if (body.from) { if (!validDate(body.from) || !validDate(body.to)) fail(400, 'Fechas inválidas.'); filters.push(['at', '>=', Date.parse(body.from + 'T00:00:00-06:00')], ['at', '<=', Date.parse(body.to + 'T23:59:59.999-06:00')]); }
         return { data: publicView((await tx.list('auditLogs', filters)).filter(r => (!body.actorId || r.actorId === body.actorId) && (!body.type || r.type === body.type)).sort((a, b) => b.at - a.at)) };
       }
-      if (!['dbRead', 'dbWrite'].includes(action)) fail(404, 'Operación no disponible.');
+      if (masterAttendance) {
+        const markedAt = now();
+        body = {
+          ref: { collection: 'asistencia' },
+          operation: 'add',
+          data: { personaId: body.personaId, fecha: dateCR(markedAt), hora: timeCR(markedAt), timestamp: markedAt.toISOString() }
+        };
+      }
+      if (!masterAttendance && !['dbRead', 'dbWrite'].includes(action)) fail(404, 'Operación no disponible.');
       const { collection, id: rawId } = body.ref || {};
       if (!collections.includes(collection)) fail(403, 'Colección no autorizada.');
       const docId = rawId ? identifier(rawId) : null;
@@ -133,11 +145,14 @@ export function createService({ store, pepper, now = () => new Date() }) {
       if (collection === 'asistencia' && body.operation === 'add') {
         const person = await tx.get(`personas/${identifier(data.personaId)}`); if (!person || person.deletedAt) fail(404, 'Persona no disponible.');
         if (profile?.role === 'leader' && person.ministerio !== profile.ministerio) fail(403, 'No puedes registrar otro ministerio.');
-        const registrante = string(body.device?.registrante, 160) || session.personName || person.nombre;
-        if (!session.personName) tx.set(sessionPath, { personName: registrante, legacyDeviceId: string(body.device?.id, 160) }, true);
-        const operator = session.personName || registrante;
-        const pair = norm(operator).includes('javier') && norm(person.nombre).includes('rosario') || norm(operator).includes('rosario') && norm(person.nombre).includes('javier');
-        if (!profile && norm(operator) !== norm(person.nombre) && !pair) fail(403, 'Se requiere un código administrativo para registrar a otra persona.');
+        let operator = person.nombre;
+        if (!masterAttendance) {
+          const registrante = string(body.device?.registrante, 160) || session.personName || person.nombre;
+          if (!session.personName) tx.set(sessionPath, { personName: registrante, legacyDeviceId: string(body.device?.id, 160) }, true);
+          operator = session.personName || registrante;
+          const pair = norm(operator).includes('javier') && norm(person.nombre).includes('rosario') || norm(operator).includes('rosario') && norm(person.nombre).includes('javier');
+          if (!profile && norm(operator) !== norm(person.nombre) && !pair) fail(403, 'Se requiere un código administrativo para registrar a otra persona.');
+        }
         if (!validDate(data.fecha) || data.fecha > dateCR(now())) fail(400, 'Fecha de asistencia inválida.');
         const existing = await tx.list('asistencia', [['personaId', '==', person.id], ['fecha', '==', data.fecha]]);
         const duplicate = existing.find(r => r.ministerio === person.ministerio && present(r)); if (duplicate) return { data: { id: duplicate.id, duplicate: true } };
@@ -145,7 +160,7 @@ export function createService({ store, pepper, now = () => new Date() }) {
         if (existing.some(r => r.id === rid || (r.ministerio === person.ministerio && !r.deletedAt && r.estado === 'pendiente'))) {
           fail(409, 'Ya hay un registro para revisión administrativa. No se creó otro.');
         }
-        if (profile?.role !== 'superadmin') {
+        if (!masterAttendance && profile?.role !== 'superadmin') {
           const fix = data.location;
           const gps = await tx.get('config/gps');
           const markedAt = Date.parse(data.timestamp);
@@ -155,7 +170,7 @@ export function createService({ store, pepper, now = () => new Date() }) {
             fail(422, 'Ubicación fuera de rango o imprecisa. La asistencia no se guardó.');
           }
         }
-        tx.set(`asistencia/${rid}`, { personaId: person.id, nombre: person.nombre, ministerio: person.ministerio, fecha: data.fecha, hora: required(data.hora, 'La hora', 50), timestamp: data.timestamp || now(), registradoPor: profile?.name || operator, estado: 'presente', createdAt: +now() });
+        tx.set(`asistencia/${rid}`, { personaId: person.id, nombre: person.nombre, ministerio: person.ministerio, fecha: data.fecha, hora: required(data.hora, 'La hora', 50), timestamp: data.timestamp || now(), registradoPor: profile?.name || operator, estado: 'presente', createdAt: +now(), ...(masterAttendance && { origen: 'mids-master' }) });
         return { data: { id: rid } };
       }
       if (['admin_alerts', 'attemptLogs', 'update_delivery_logs', 'fcm_tokens'].includes(collection) && body.operation !== 'delete') {

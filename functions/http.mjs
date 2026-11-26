@@ -31,7 +31,7 @@ export function createHttpApp(service, { origins = [], secureCookies = true, tra
       const authorization = req.get('Authorization') || '';
       if (transport === 'bearer' && authorization && !/^Bearer [\w-]{43}$/.test(authorization)) return res.status(401).json({ error: 'Sesión inválida.' });
       const token = transport === 'bearer' ? authorization.slice(7) || undefined : cookie;
-      const result = await service.dispatch({ action: req.params.action, body: req.body || {}, token, ip: req.ip || req.socket.remoteAddress });
+      const result = await service.dispatch({ action: req.params.action, body: req.body || {}, token, ip: req.ip || req.socket.remoteAddress, origin: req.get('Origin') });
       if (transport === 'cookie' && result.token) res.cookie('__session', result.token, { httpOnly: true, secure: secureCookies, sameSite: 'strict', path: '/', maxAge: 180 * 86400000 });
       res.json(transport === 'bearer' && result.token ? { ...result.data, sessionToken: result.token } : result.data);
     } catch (error) {
